@@ -1,0 +1,7 @@
+backups/
+*.dmp
+*.log
+*.zip
+*.tar
+*.gz
+.env
