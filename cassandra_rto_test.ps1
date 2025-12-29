@@ -12,3 +12,8 @@ docker exec -it cass1 cqlsh -e "INSERT INTO people (id, name, age) VALUES (uuid(
 docker exec -it cass1 cqlsh -e "INSERT INTO people (id, name, age) VALUES (uuid(), 'Charlie', 35);" -k dbms
 
 docker exec -it cass1 cqlsh -e "SELECT * FROM dbms.people;"
+
+Write-Host "`n2. BACKUP" -ForegroundColor Green
+docker exec cass1 bash -c "rm -rf /var/lib/cassandra/data/dbms/people-*/snapshots/rto_test"
+docker exec cass1 nodetool snapshot dbms -t rto_test
+Write-Host "Backup completed"
