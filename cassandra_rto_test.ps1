@@ -22,3 +22,10 @@ Write-Host "`n3. DATA LOSS" -ForegroundColor Green
 docker exec -it cass1 cqlsh -e "TRUNCATE dbms.people;"
 Write-Host "`nData after truncate:" -ForegroundColor Yellow
 docker exec -it cass1 cqlsh -e "SELECT count(*) FROM dbms.people;"
+
+Write-Host "`n4. RESTORE" -ForegroundColor Green
+docker exec cass1 bash -c 'for dir in /var/lib/cassandra/data/dbms/people-*/; do if [ -d ${dir}snapshots/rto_test/ ]; then rm -f ${dir}*.db; cp -f ${dir}snapshots/rto_test/*.db ${dir}; fi; done'
+docker exec cass1 nodetool refresh dbms people
+
+Write-Host "`n5. VERIFY" -ForegroundColor Green
+docker exec -it cass1 cqlsh -e "SELECT * FROM dbms.people;"
