@@ -17,3 +17,8 @@ Write-Host "`n2. BACKUP" -ForegroundColor Green
 docker exec cass1 bash -c "rm -rf /var/lib/cassandra/data/dbms/people-*/snapshots/rto_test"
 docker exec cass1 nodetool snapshot dbms -t rto_test
 Write-Host "Backup completed"
+
+Write-Host "`n3. DATA LOSS" -ForegroundColor Green
+docker exec -it cass1 cqlsh -e "TRUNCATE dbms.people;"
+Write-Host "`nData after truncate:" -ForegroundColor Yellow
+docker exec -it cass1 cqlsh -e "SELECT count(*) FROM dbms.people;"
