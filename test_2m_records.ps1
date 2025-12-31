@@ -166,33 +166,54 @@ if ($Database -eq "cassandra") {
         Start-Sleep -Seconds 5
     }
 
-    docker exec mongo1 mongosh --eval "use testdata2m" --eval "db.records.drop()"
+    # Ensure clean DB/collection
+    docker exec mongo1 mongosh --quiet --eval "use testdata2m" --eval "db.records.drop()"
 
-    Write-Host "`n2. IMPORTING 2M RECORDS (20-30 minutes)" -ForegroundColor Green
+    # =========================
+    # ✅ REPLACED IMPORT SECTION
+    # =========================
+    Write-Host "`n2. IMPORTING 2M RECORDS (mongoimport - avoids Windows cmd length limit)" -ForegroundColor Green
+
+    # Robust base directory: use script folder if available, otherwise current folder
+    $baseDir = if ($PSScriptRoot -and $PSScriptRoot.Trim().Length -gt 0) {
+        $PSScriptRoot
+    } else {
+        (Get-Location).Path
+    }
+
+    $jsonlPath = Join-Path $baseDir "mongo_2m.jsonl"
+    Write-Host "Writing JSONL to: $jsonlPath" -ForegroundColor Yellow
+
     $seedStart = (Get-Date).Ticks / 10000
-    $batchSize = 5000
 
-    for ($i = 0; $i -lt $recordCount; $i += $batchSize) {
-        $docs = @()
-        $end = [Math]::Min($i + $batchSize, $recordCount)
-
-        for ($j = $i; $j -lt $end; $j++) {
-            $value = Get-Random -Minimum 1 -Maximum 10000
-            $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-            $docs += "{name:'Record$j',value:$value,timestamp:'$timestamp'}"
-        }
-
-        $insertCmd = "db.records.insertMany([" + ($docs -join ",") + "])"
-        docker exec mongo1 mongosh --quiet --eval "use testdata2m" --eval $insertCmd 2>$null
+    $sw = [System.IO.StreamWriter]::new($jsonlPath, $false, [System.Text.Encoding]::UTF8)
+    for ($i = 0; $i -lt $recordCount; $i++) {
+        $value = Get-Random -Minimum 1 -Maximum 10000
+        $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+        $sw.WriteLine("{""name"":""Record$i"",""value"":$value,""timestamp"":""$timestamp""}")
 
         if ($i % 100000 -eq 0) {
             $progress = [math]::Round(($i / $recordCount) * 100, 1)
-            Write-Host "  Inserted $i / $recordCount ($progress%)..." -ForegroundColor Gray
+            Write-Host "  Generated $i / $recordCount ($progress%)..." -ForegroundColor Gray
         }
     }
+    $sw.Close()
+
+    Write-Host "Copying JSONL into MongoDB container..." -ForegroundColor Yellow
+    docker cp $jsonlPath mongo1:/tmp/mongo_2m.jsonl
+
+    Write-Host "Importing with mongoimport..." -ForegroundColor Yellow
+    docker exec mongo1 mongoimport --db testdata2m --collection records --file /tmp/mongo_2m.jsonl --type json
 
     $seedEnd = (Get-Date).Ticks / 10000
     $results.SeedTime = $seedEnd - $seedStart
+
+    # Clean up host file (optional)
+    Remove-Item $jsonlPath -ErrorAction SilentlyContinue
+
+    # =========================
+    # END REPLACED IMPORT SECTION
+    # =========================
 
     Write-Host "Counting records..."
     $countOutput = docker exec mongo1 mongosh --quiet --eval "use testdata2m" --eval "db.records.countDocuments({})"
@@ -226,7 +247,7 @@ if ($Database -eq "cassandra") {
 
     Write-Host "`n4. DATA LOSS SIMULATION" -ForegroundColor Green
     Write-Host "Dropping collection..." -ForegroundColor Red
-    docker exec mongo1 mongosh --eval "use testdata2m" --eval "db.records.drop()"
+    docker exec mongo1 mongosh --quiet --eval "use testdata2m" --eval "db.records.drop()"
     Write-Host "Collection dropped!" -ForegroundColor Red
 
     Write-Host "`n5. RESTORE (may take 5-10 minutes)" -ForegroundColor Green
